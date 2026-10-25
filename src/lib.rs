@@ -13,16 +13,11 @@ use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-wit_bindgen::generate!({
-    world: "novel-plugin",
-    path: "../../wit",
-});
-
-use exports::ilp::plugin::plugin::{
+use ilp_plugin_wit::exports::ilp::plugin::plugin::{
     ChapterContent, ChapterEntry, FetchTask, Guest, PluginMetadata, SearchPage,
 };
-use ilp::plugin::host;
-use ilp::plugin::types::{HttpRequest, HttpResponse, SearchResult};
+use ilp_plugin_wit::ilp::plugin::host;
+use ilp_plugin_wit::ilp::plugin::types::{HttpRequest, HttpResponse, SearchResult};
 
 const CATALOG_API: &str = "https://fanqienovel.com/api/reader/directory/detail?bookId=";
 const PAGE_API: &str = "https://fanqienovel.com/page/";
@@ -75,7 +70,7 @@ fn get(url: &str) -> Result<String, String> {
     let resp = host::http_fetch(&HttpRequest {
         method: "GET".to_string(),
         url: url.to_string(),
-        headers: vec![ilp::plugin::types::HttpHeader {
+        headers: vec![ilp_plugin_wit::ilp::plugin::types::HttpHeader {
             name: "user-agent".to_string(),
             value: UA.to_string(),
         }],
@@ -497,7 +492,7 @@ fn unescape_entities(s: &str) -> String {
         .replace("&amp;", "&")
 }
 
-export!(Fanqie);
+ilp_plugin_wit::export!(Fanqie with_types_in ilp_plugin_wit);
 
 #[cfg(test)]
 mod tests {

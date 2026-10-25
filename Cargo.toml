@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-wit-bindgen = "0.46"
+ilp-plugin-wit = { path = "../ILP/crates/ilp-plugin-wit" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 aes = "0.8"
@@ -16,3 +16,7 @@ md5 = { package = "md-5", version = "0.10" }
 flate2 = "1"
 base64 = "0.22"
 sha2 = "0.10"
+
+[profile.release]
+opt-level = "s"
+lto = true

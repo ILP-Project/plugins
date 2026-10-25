@@ -6,7 +6,7 @@
 
 #[cfg(target_family = "wasm")]
 pub fn now_ms() -> u64 {
-    crate::ilp::plugin::host::now_ms()
+    ilp_plugin_wit::ilp::plugin::host::now_ms()
 }
 
 #[cfg(not(target_family = "wasm"))]

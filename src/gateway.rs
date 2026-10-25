@@ -6,8 +6,8 @@
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-use crate::ilp::plugin::host;
-use crate::ilp::plugin::types::{HttpHeader, HttpRequest};
+use ilp_plugin_wit::ilp::plugin::host;
+use ilp_plugin_wit::ilp::plugin::types::{HttpHeader, HttpRequest};
 use crate::sign::{self, x_argus, x_ladon, AID};
 use crate::sm3::sm3;
 
