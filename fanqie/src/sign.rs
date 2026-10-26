@@ -200,10 +200,8 @@ pub fn x_argus(query: &str, xss_stub: &str) -> Result<String, String> {
     sm3_in.extend_from_slice(&SIGN_KEY);
     let digest = sm3(&sm3_in);
 
-    let key_words: Vec<u64> = digest
-        .chunks_exact(8)
-        .map(|c| u64::from_le_bytes(c.try_into().expect("固定 8 字节")))
-        .collect();
+    let (key_chunks, _) = digest.as_chunks::<8>();
+    let key_words: Vec<u64> = key_chunks.iter().map(|c| u64::from_le_bytes(*c)).collect();
     let ks = simon_expand(&[key_words[0], key_words[1], key_words[2], key_words[3]]);
 
     let mut enc = Vec::with_capacity(protobuf.len());
@@ -280,7 +278,7 @@ pub fn base64_decode(s: &str) -> Result<Vec<u8>, String> {
 
 /// AES-128-CBC 解密并去 PKCS#7 填充。
 pub fn aes128_cbc_decrypt(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
-    if key.len() != 16 || iv.len() != 16 || data.is_empty() || data.len() % 16 != 0 {
+    if key.len() != 16 || iv.len() != 16 || data.is_empty() || !data.len().is_multiple_of(16) {
         return Err("AES-128 参数长度不合法".to_string());
     }
     let dec = cbc::Decryptor::<Aes128>::new_from_slices(key, iv)
@@ -322,7 +320,7 @@ pub fn aes256_cbc_encrypt(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>,
 /// AES-256-CBC 解密并去 PKCS#7 填充。仅自测用，见上。
 #[cfg(test)]
 pub fn aes256_cbc_decrypt(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
-    if key.len() != 32 || iv.len() != 16 || data.is_empty() || data.len() % 16 != 0 {
+    if key.len() != 32 || iv.len() != 16 || data.is_empty() || !data.len().is_multiple_of(16) {
         return Err("AES 参数长度不合法".to_string());
     }
     let dec = cbc::Decryptor::<Aes256>::new_from_slices(key, iv)

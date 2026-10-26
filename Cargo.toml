@@ -1,22 +1,8 @@
-[package]
-name = "ilp-plugin-fanqie"
-version = "1.0.0"
-edition = "2021"
+[workspace]
+resolver = "2"
+members = ["fanqie"]
 
-[lib]
-crate-type = ["cdylib"]
-
-[dependencies]
-ilp-plugin-wit = { path = "../ILP/crates/ilp-plugin-wit" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-aes = "0.8"
-cbc = "0.1"
-md5 = { package = "md-5", version = "0.10" }
-flate2 = "1"
-base64 = "0.22"
-sha2 = "0.10"
-
+# 各插件各自优化体积；wasm 产物越小加载越快。
 [profile.release]
 opt-level = "s"
 lto = true

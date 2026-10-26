@@ -6,10 +6,10 @@
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-use ilp_plugin_wit::ilp::plugin::host;
-use ilp_plugin_wit::ilp::plugin::types::{HttpHeader, HttpRequest};
 use crate::sign::{self, x_argus, x_ladon, AID};
 use crate::sm3::sm3;
+use ilp_plugin_wit::ilp::plugin::host;
+use ilp_plugin_wit::ilp::plugin::types::{HttpHeader, HttpRequest};
 
 const DEVICE_REGISTER_URL: &str = "https://i.snssdk.com/service/2/device_register/?tt_data=a";
 const REGISTER_KEY_URL: &str = "https://reading.snssdk.com/reading/crypt/registerkey?";
@@ -26,9 +26,6 @@ const APP_UA: &str = "com.dragon.read";
 const VERSION_CODE: &str = "70132";
 const VERSION_NAME: &str = "7.0.1.32";
 const CHANNEL: &str = "43536163a";
-
-/// 单批上限。实测请求超过 30 章时服务端只回前 30 章，
-/// 所以主动按 30 切分，避免无声丢章。
 
 /// 设备与内容密钥。存在宿主的 KV 里，重启后复用，
 /// 避免每次启动都重新注册。
@@ -69,7 +66,7 @@ fn hex_encode(data: &[u8]) -> String {
 
 fn hex_decode(s: &str) -> Option<Vec<u8>> {
     let b = s.as_bytes();
-    if b.len() % 2 != 0 {
+    if !b.len().is_multiple_of(2) {
         return None;
     }
     let mut out = Vec::with_capacity(b.len() / 2);

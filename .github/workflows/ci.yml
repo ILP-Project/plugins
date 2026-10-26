@@ -1,0 +1,70 @@
+name: ci
+
+# 只做校验，不部署。
+#
+# 部署由 Cloudflare Pages 的 Git 集成完成（构建命令 `python3 tools/build_site.py`，
+# 输出目录 `_site`）。这条流水线的价值是：CF Pages 构建失败不会阻止 PR 合并，
+# 而 PR 里混进一个 clippy 警告或未格式化的文件是常事，需要有人先挡住。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 wasm 目标
+        run: rustup target add wasm32-wasip2
+
+      # `cargo fmt --check` 和 `cargo clippy` 必须都跑：
+      # 插件的真实目标是 wasm32-wasip2，宿主侧的 `--all-targets` 从来看不到它，
+      # 这里是在独立仓库里唯一能覆盖到的位置。
+      - name: 格式
+        run: cargo fmt --all --check
+
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: 测试
+        run: cargo test
+
+      - name: 构建 wasm
+        run: cargo build --target wasm32-wasip2 --release
+
+      - name: 校验产物是组件模型
+        run: |
+          wasm=target/wasm32-wasip2/release/ilp_plugin_fanqie.wasm
+          test -f "$wasm"
+          # 组件头 00 61 73 6d 0d 00 01 00。宿主只接受核心模块和组件两种头，
+          # 这里多一道防线，避免 CI 绿而产物其实不对。
+          od -An -tx1 -N8 "$wasm" | tr -s ' ' | grep -qx ' 00 61 73 6d 0d 00 01 00'
+
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 安装 wasm 目标
+        run: rustup target add wasm32-wasip2
+      - name: 生成站点与 registry
+        run: python3 tools/build_site.py
+
+      # 产物形状是宿主的契约，写死几条断言免得改脚本时悄悄破掉。
+      - name: 校验 registry 形状
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          reg = json.load(open("_site/registry.json"))
+          assert reg["schema"] == 1, reg["schema"]
+          assert reg["plugins"], "registry 不能为空"
+          for p in reg["plugins"]:
+              for key in ("name", "site_id", "abi", "latest", "versions", "url", "sha256"):
+                  assert p.get(key), f"{p.get('name')} 缺少 {key}"
+              assert p["latest"] in p["versions"], f"{p['name']} 的 latest 不在 versions 里"
+              path = f"_site/{p['url']}"
+              assert __import__("pathlib").Path(path).is_file(), f"缺少产物 {path}"
+          print("registry 形状正确")
+          PY

@@ -1,0 +1,16 @@
+# 站点插件的元数据。只写"不会随发布变化"的内容。
+#
+# url / version / abi / size / sha256 一律由 tools/build_site.py 从构建产物和
+# Cargo.toml 推导——手写这些字段必然写错（旧的 plugin.json 就写过一个 404 地址）。
+
+name = "fanqie"
+site_name = "番茄小说"
+site_id = "fanqie"
+site_domain = "fanqienovel.com"
+description = "番茄小说（fanqienovel.com）免费章节下载。支持目录、正文、搜索与封面。"
+author = "RhenCloud"
+license = "GPL-3.0"
+
+# 与 ILP/crates/ilp-plugin-wit/wit/plugin.wit 里的 `package ilp:plugin@x.y.z` 一致。
+# build_site.py 会校验它，防止 WIT 升版后这里忘记同步。
+abi = "0.1.0"

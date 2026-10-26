@@ -19,6 +19,10 @@ use ilp_plugin_wit::exports::ilp::plugin::plugin::{
 use ilp_plugin_wit::ilp::plugin::host;
 use ilp_plugin_wit::ilp::plugin::types::{HttpRequest, HttpResponse, SearchResult};
 
+/// 编译时依据的 ABI 版本。必须与 ilp-plugin-wit 的
+/// `package ilp:plugin@x.y.z` 一致；宿主加载时会比对。
+const ABI_VERSION: &str = "0.1.0";
+
 const CATALOG_API: &str = "https://fanqienovel.com/api/reader/directory/detail?bookId=";
 const PAGE_API: &str = "https://fanqienovel.com/page/";
 const READER_API: &str = "https://fanqienovel.com/reader/";
@@ -208,12 +212,15 @@ struct Fanqie;
 impl Guest for Fanqie {
     fn metadata() -> PluginMetadata {
         PluginMetadata {
+            // 版本只有一个来源：Cargo.toml。手写常量迟早与
+            // registry 里的 latest 不一致，那种不一致极难发现。
+            abi_version: ABI_VERSION.to_string(),
             site_name: "番茄小说".to_string(),
             site_id: "fanqie".to_string(),
             site_domain: "fanqienovel.com".to_string(),
             plugin_name: "FanqiePlugin".to_string(),
             plugin_id: "fanqieplugin".to_string(),
-            version: "1.0.0".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
         }
     }
 
@@ -347,11 +354,13 @@ impl Guest for Fanqie {
         if chapter_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let dev = gateway::ensure_device(false)?;
+        // 先校验本地状态，再碰网络：没抓目录就谈不上取正文，
+        // 这时去注册设备只会把"缺前置条件"伪装成网络错误。
         let book_id = with_state(|s| s.book_id.clone());
         if book_id.is_empty() {
             return Err("尚未抓取目录，不知道 book_id".to_string());
         }
+        let dev = gateway::ensure_device(false)?;
         // 宿主可能直接从缓存加载书籍而没调 catalog，
         // 那样状态里没有标题映射。就地补一次，保证章节名正确。
         if with_state(|s| s.titles.is_empty()) {

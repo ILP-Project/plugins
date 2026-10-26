@@ -77,10 +77,11 @@ pub fn speck_encrypt(block: (u64, u64), ks: &[u64]) -> (u64, u64) {
 
 /// 把字节按小端两两拼成 u64，供分组函数使用。
 pub fn le_words(bytes: &[u8], count: usize) -> Vec<u64> {
-    bytes
-        .chunks_exact(8)
+    let (chunks, _) = bytes.as_chunks::<8>();
+    chunks
+        .iter()
         .take(count)
-        .map(|c| u64::from_le_bytes(c.try_into().expect("分块长度固定为 8")))
+        .map(|c| u64::from_le_bytes(*c))
         .collect()
 }
 
