@@ -91,6 +91,8 @@ jobs:
           PY
 
       - name: 推送到 site 分支
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           cd _site
@@ -102,4 +104,9 @@ jobs:
           git -c user.name='github-actions[bot]' \
               -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
               commit -q -m "site: ${GITHUB_SHA:0:7}"
-          git push -f origin site
+          # 这里不能用 `origin`：_site 里 git init 出来的是全新仓库，
+          # 没有继承外层 checkout 的 remote。显式带上 token，不依赖
+          # actions/checkout 留下的 credential helper 是否对该路径生效。
+          git push -f \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            site
