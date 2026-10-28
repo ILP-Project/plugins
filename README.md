@@ -12,7 +12,9 @@ ilp plugin install fanqie            # 最新版
 ilp plugin install fanqie@1.0.0      # 指定版本
 ```
 
-宿主从本站的 `registry.json` 解析下载地址，并在安装前校验 ABI 与 SHA-256。
+宿主从 `https://ilp.elysola.org/registry.json` 解析下载地址，并在安装前校验
+ABI 与 SHA-256。站点由 `publish.yml` 推到 `site` 分支，Cloudflare Pages
+从该分支发布。
 
 ## 目录
 
