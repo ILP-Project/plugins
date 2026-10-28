@@ -1,0 +1,105 @@
+name: publish
+
+# 构建 wasm、生成站点，把产物推到 `site` 分支；Cloudflare Pages 监听该分支直接发布。
+#
+# 为什么不在 Cloudflare Pages 里构建：CF 的构建镜像**不预装 Rust**（官方文档
+# 明确把 Rust 和 Swift 列为"默认不安装"）。在那里构建要么每次现装 rustup
+# （多两三分钟，失败日志还埋在 curl 输出里），要么放弃 wasm 构建。GitHub
+# Actions 镜像自带工具链，缓存也好做。
+#
+# 仍然不需要 CLOUDFLARE_API_TOKEN：只把产物推成分支，由 CF 自己去拉。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 安装 wasm 目标
+        run: rustup target add wasm32-wasip2
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wasm-release
+
+      # 关键顺序：先把上次发布的产物回填进 _site，再构建。
+      #
+      # `build_site.py` 的"已发布版本不可变"守卫靠比较 _site 里已有产物的
+      # sha256。CI 每次都是干净目录，不回填的话那条守卫永远不会触发——
+      # 改代码而不升版本就会静默覆盖别人已装好的同名版本。
+      #
+      # 用 `git archive` 而不是 `git checkout <ref> -- _site`：后者要求路径被
+      # git 跟踪，而 _site 在 .gitignore 里。
+      - name: 回填上次发布
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin site >/dev/null 2>&1; then
+            git fetch --depth=1 origin site
+            mkdir -p _site
+            git archive FETCH_HEAD | tar -x -C _site
+            echo "已回填 $(find _site -name '*.wasm' | wc -l) 个历史产物"
+          else
+            echo "首次发布，无历史产物"
+          fi
+
+      - name: 构建并生成站点
+        run: python3 tools/build_site.py
+
+      - name: 校验产物
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+
+          site = pathlib.Path("_site")
+          reg = json.loads((site / "registry.json").read_text())
+          assert reg["schema"] == 1, reg["schema"]
+          assert reg["plugins"], "registry 不能为空"
+
+          def key(v):
+              parts = [int(x) if x.isdigit() else 0 for x in v.split("-")[0].split(".")]
+              return (parts, 0 if "-" in v else 1)
+
+          for p in reg["plugins"]:
+              for field in ("name", "site_id", "abi", "latest", "versions", "url", "sha256"):
+                  assert p.get(field), f"{p.get('name')} 缺少 {field}"
+              assert p["latest"] in p["versions"], f"{p['name']}: latest 不在 versions 里"
+              assert p["latest"] == max(p["versions"], key=key), f"{p['name']}: latest 不是最大值"
+
+              wasm = site / p["url"]
+              assert wasm.is_file(), f"缺少产物 {wasm}"
+              got = hashlib.sha256(wasm.read_bytes()).hexdigest()
+              assert got == p["sha256"], f"{p['name']}: 产物与 registry 摘要不一致"
+
+              # 每个声明过的版本都必须真的存在，否则 `install name@ver` 会 404。
+              for v in p["versions"]:
+                  f = site / p["name"] / v / f"{p['name']}.wasm"
+                  assert f.is_file(), f"缺少历史版本产物 {f}"
+
+              print(f"  {p['name']} {p['latest']} 已验证（{len(p['versions'])} 个版本）")
+          PY
+
+      - name: 推送到 site 分支
+        run: |
+          set -euo pipefail
+          cd _site
+          # CF Pages 期望站点根就是分支根目录。
+          git init -q -b site
+          # -f：_site 在父仓库的 .gitignore 里。虽然这里 git init 出来的新仓库
+          # 不读父级忽略规则，但依赖那个行为太隐晦，显式强加更安全。
+          git add -A -f
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -q -m "site: ${GITHUB_SHA:0:7}"
+          git push -f origin site

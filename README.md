@@ -58,12 +58,35 @@ ilp-plugin-wit = { path = "../ILP/crates/ilp-plugin-wit" }
 改完代码**先升 `Cargo.toml` 的 `version`**。版本号是不可变契约：
 `build_site.py` 发现已发布的同版本产物内容不同会直接失败，不会覆盖。
 
-之后 push 到 `main`，Cloudflare Pages 自动：
+push 到 `main` 后，`publish.yml` 会：
 
-1. 构建全部插件的 wasm；
-2. 交叉校验 `plugin.toml` 的 `abi` 与 WIT 的 `package ilp:plugin@x.y.z`；
-3. 生成 `_site/registry.json`、每个版本的 `latest.json` 和站点页面；
-4. 部署。
+1. 把 `site` 分支上**上次发布的产物回填进 `_site`**；
+2. 构建全部插件的 wasm；
+3. 校验 `plugin.toml` 的 `abi` 等于 `SUPPORTED_ABI`；
+4. 生成 `_site/registry.json`、每个版本的 `latest.json` 和站点页面；
+5. 校验每个已声明版本的产品都在、摘要都对；
+6. 把 `_site` 推到 `site` 分支，Cloudflare Pages 从该分支发布。
+
+第 1 步不能省。版本不可变守卫靠比较 `_site` 里已有产物的 sha256，
+而 CI 每次都是干净目录——不回填的话守卫永远不触发，改代码不升版本
+就会静默覆盖别人已装好的同名版本。
+
+### 为什么不在 Cloudflare Pages 里构建
+
+CF 的构建镜像**不预装 Rust**（官方文档把 Rust 和 Swift 列为"默认不安装"）。
+在那里构建要么每次现装 rustup，要么放弃 wasm 构建。GitHub Actions 镜像
+自带工具链，缓存也好做，所以构建放 CI、CF 只当静态托管。
+
+这也意味着**不需要 `CLOUDFLARE_API_TOKEN`**：只推分支，不调 API。
+
+## 本地开发
+
+```bash
+rustup target add wasm32-wasip2
+cargo test
+cargo build --target wasm32-wasip2 --release
+python3 tools/build_site.py     # 生成 _site/ 供本地检查
+```
 
 ## 新增一个站点插件
 

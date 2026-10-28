@@ -100,15 +100,28 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def version_key(v: str) -> tuple:
+    """把 `1.10.0` 这类版本变成可比较的元组。
+
+    直接用字符串排序会把 1.10.0 排在 1.9.0 前面——版本越多越容易撞上，
+    而"最新版本"排错会让站点上的安装指引指向一个旧版本。
+    """
+    parts = []
+    for piece in v.split("-")[0].split("."):
+        parts.append(int(piece) if piece.isdigit() else 0)
+    # 预发布版本（1.0.0-rc1）排在同号的正式版之前。
+    return (tuple(parts), 1 if "-" in v else 0)
+
+
 def existing_versions(name: str) -> list[str]:
     """扫 _site 里已发布的版本目录。"""
     base = SITE / name
     if not base.is_dir():
         return []
-    return sorted(
-        (p.name for p in base.iterdir() if p.is_dir() and (p / f"{name}.wasm").is_file()),
-        reverse=True,
-    )
+    found = [
+        p.name for p in base.iterdir() if p.is_dir() and (p / f"{name}.wasm").is_file()
+    ]
+    return sorted(found, key=version_key, reverse=True)
 
 
 def publish(name: str, version: str, wasm: Path) -> str:
@@ -235,7 +248,10 @@ def main() -> None:
         digest = publish(meta["name"], version, wasm)
 
         # 已发布版本 + 本次版本，去重后按语义序倒排（这里用简单的数字段比较）。
-        versions = sorted(set(existing_versions(meta["name"])) | {version}, reverse=True)
+        versions = sorted(set(existing_versions(meta["name"])) | {version}, key=version_key, reverse=True)
+        # `latest` 必须是版本意义上的最大值，而不是"这次构建的版本"：
+        # 用一个旧版本号重新构建时，站点不能把 latest 降回去。
+        newest = max(versions, key=version_key)
         info = {
             "name": meta["name"],
             "site_id": meta["site_id"],
@@ -243,7 +259,7 @@ def main() -> None:
             "site_domain": meta["site_domain"],
             "description": meta["description"],
             "abi": meta["abi"],
-            "latest": version,
+            "latest": newest,
             "versions": versions,
             "url": f"{meta['name']}/{version}/{meta['name']}.wasm",
             "size": wasm.stat().st_size,
@@ -254,7 +270,7 @@ def main() -> None:
         # latest.json：让 `install <name>` 不必先拉整个 registry 也能解析
         # （宿主目前直接读 registry，保留它是为了让 CDN 缓存更细粒度）。
         (SITE / meta["name"] / "latest.json").write_text(
-            json.dumps(version, ensure_ascii=False) + "\n", encoding="utf-8"
+            json.dumps(newest, ensure_ascii=False) + "\n", encoding="utf-8"
         )
         (SITE / meta["name"] / "index.html").write_text(
             page(meta, info, versions), encoding="utf-8"

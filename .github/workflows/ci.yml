@@ -15,7 +15,7 @@ jobs:
   plugin:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: 安装 wasm 目标
         run: rustup target add wasm32-wasip2
@@ -46,7 +46,7 @@ jobs:
   site:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: 安装 wasm 目标
         run: rustup target add wasm32-wasip2
       - name: 生成站点与 registry
