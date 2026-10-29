@@ -13,4 +13,4 @@ license = "GPL-3.0"
 
 # 与 ILP/crates/ilp-plugin-wit/wit/plugin.wit 里的 `package ilp:plugin@x.y.z` 一致。
 # build_site.py 会校验它，防止 WIT 升版后这里忘记同步。
-abi = "0.1.0"
+abi = "0.2.0"

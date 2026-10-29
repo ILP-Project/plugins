@@ -14,14 +14,14 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use ilp_plugin_wit::exports::ilp::plugin::plugin::{
-    ChapterContent, ChapterEntry, FetchTask, Guest, PluginMetadata, SearchPage,
+    ChapterEntry, ChapterResult, FetchTask, Guest, PluginMetadata, SearchPage,
 };
-use ilp_plugin_wit::ilp::plugin::host;
-use ilp_plugin_wit::ilp::plugin::types::{HttpRequest, HttpResponse, SearchResult};
+use ilp_plugin_wit::ilp::plugin::host::{self, HttpHandle, StorageHandle};
+use ilp_plugin_wit::ilp::plugin::types::{ChapterStatus, HttpRequest, HttpResponse, SearchResult};
 
 /// 编译时依据的 ABI 版本。必须与 ilp-plugin-wit 的
 /// `package ilp:plugin@x.y.z` 一致；宿主加载时会比对。
-const ABI_VERSION: &str = "0.1.0";
+const ABI_VERSION: &str = "0.2.0";
 
 const CATALOG_API: &str = "https://fanqienovel.com/api/reader/directory/detail?bookId=";
 const PAGE_API: &str = "https://fanqienovel.com/page/";
@@ -40,6 +40,8 @@ struct State {
     /// 目录里拿到 id -> 标题，consume_fetch 用它补全章节名。
     /// 任务里只带 id，标题必须回查，否则所有章节会写到同一个文件。
     titles: HashMap<String, String>,
+    http: Option<HttpHandle>,
+    storage: Option<StorageHandle>,
 }
 
 thread_local! {
@@ -57,6 +59,8 @@ fn with_state<T>(f: impl FnOnce(&mut State) -> T) -> T {
             cover_url: None,
             description: None,
             titles: HashMap::new(),
+            http: None,
+            storage: None,
         });
         f(state)
     })
@@ -71,7 +75,7 @@ fn log_warn(msg: &str) {
 }
 
 fn get(url: &str) -> Result<String, String> {
-    let resp = host::http_fetch(&HttpRequest {
+    let request = HttpRequest {
         method: "GET".to_string(),
         url: url.to_string(),
         headers: vec![ilp_plugin_wit::ilp::plugin::types::HttpHeader {
@@ -79,6 +83,12 @@ fn get(url: &str) -> Result<String, String> {
             value: UA.to_string(),
         }],
         body: None,
+    };
+    let resp = with_state(|s| {
+        s.http
+            .as_ref()
+            .ok_or_else(|| "permission-denied: http".to_string())?
+            .fetch(&request)
     })?;
     if resp.status != 200 {
         return Err(format!("HTTP {}: {url}", resp.status));
@@ -221,11 +231,20 @@ impl Guest for Fanqie {
             plugin_name: "FanqiePlugin".to_string(),
             plugin_id: "fanqieplugin".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
+            permissions: vec![
+                ilp_plugin_wit::ilp::plugin::types::Permission::Http,
+                ilp_plugin_wit::ilp::plugin::types::Permission::Clock,
+                ilp_plugin_wit::ilp::plugin::types::Permission::StorageRead,
+                ilp_plugin_wit::ilp::plugin::types::Permission::StorageWrite,
+            ],
+            allowed_domains: vec!["fanqienovel.com".to_string(), "snssdk.com".to_string()],
         }
     }
 
     fn init(book_id: String, force_update: bool) -> Result<(), String> {
         with_state(|s| {
+            s.http = host::acquire_http();
+            s.storage = host::acquire_storage();
             s.book_id = book_id;
             if force_update {
                 s.page_html = None;
@@ -315,6 +334,7 @@ impl Guest for Fanqie {
                     url: format!("{READER_API}{id}"),
                     fetch_url: format!("{READER_API}{id}"),
                     update_time: 0,
+                    order_key: out.len().to_string(),
                 });
             }
         }
@@ -384,7 +404,7 @@ impl Guest for Fanqie {
     fn consume_fetch(
         task_id: String,
         response: HttpResponse,
-    ) -> Result<Vec<ChapterContent>, String> {
+    ) -> Result<Vec<ChapterResult>, String> {
         if response.status != 200 {
             return Err(format!("HTTP {}: {task_id}", response.status));
         }
@@ -414,10 +434,14 @@ impl Guest for Fanqie {
                 missing.push(id.clone());
                 continue;
             }
-            out.push(ChapterContent {
+            out.push(ChapterResult {
                 id: id.clone(),
                 title,
-                text: body,
+                status: ChapterStatus::Ok,
+                text: Some(body),
+                error_code: String::new(),
+                retryable: false,
+                message: None,
             });
         }
         if !missing.is_empty() {
