@@ -54,7 +54,13 @@ jobs:
             echo "首次发布，无历史产物"
           fi
 
+      - name: 安装签名依赖
+        run: python3 -m pip install cryptography
+
       - name: 构建并生成站点
+        env:
+          ILP_SIGNING_KEY_ID: ${{ secrets.ILP_SIGNING_KEY_ID }}
+          ILP_SIGNING_KEY: ${{ secrets.ILP_SIGNING_KEY }}
         run: python3 tools/build_site.py
 
       - name: 校验产物
@@ -81,6 +87,10 @@ jobs:
               assert wasm.is_file(), f"缺少产物 {wasm}"
               got = hashlib.sha256(wasm.read_bytes()).hexdigest()
               assert got == p["sha256"], f"{p['name']}: 产物与 registry 摘要不一致"
+              assert p.get("signatures"), f"{p['name']}: registry 缺少签名索引"
+              for v in p["versions"]:
+                  artifact = p.get("artifacts", {}).get(v)
+                  assert artifact and artifact.get("signature"), f"{p['name']} {v}: 缺少签名"
 
               # 每个声明过的版本都必须真的存在，否则 `install name@ver` 会 404。
               for v in p["versions"]:
