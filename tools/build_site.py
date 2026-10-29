@@ -17,9 +17,11 @@ CF Pages 的构建命令就是它。设计约束：
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import html
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -90,6 +92,23 @@ def build(d: Path) -> Path:
 
 def crate_stem(d: Path) -> str:
     return load_toml(d / "Cargo.toml")["package"]["name"].replace("-", "_")
+
+
+def sign(path: Path) -> tuple[str, str] | None:
+    """使用 ILP_SIGNING_KEY（base64 Ed25519 私钥）签名，返回 key_id 和签名。"""
+    key = os.environ.get("ILP_SIGNING_KEY")
+    key_id = os.environ.get("ILP_SIGNING_KEY_ID")
+    if not key or not key_id:
+        return None
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives import serialization
+        raw = base64.b64decode(key)
+        private = Ed25519PrivateKey.from_private_bytes(raw)
+        signature = private.sign(path.read_bytes())
+        return key_id, base64.b64encode(signature).decode("ascii")
+    except Exception as exc:
+        fail(f"插件签名失败: {exc}")
 
 
 def sha256(path: Path) -> str:
@@ -255,11 +274,15 @@ def main() -> None:
         artifacts = {}
         for published_version in versions:
             published = SITE / meta["name"] / published_version / f"{meta['name']}.wasm"
-            artifacts[published_version] = {
+            artifact = {
                 "url": f"{meta['name']}/{published_version}/{meta['name']}.wasm",
                 "size": published.stat().st_size,
                 "sha256": sha256(published),
             }
+            signed = sign(published)
+            if signed:
+                artifact["signature"] = {"key_id": signed[0], "signature": signed[1]}
+            artifacts[published_version] = artifact
         info = {
             "name": meta["name"],
             "site_id": meta["site_id"],
@@ -273,6 +296,11 @@ def main() -> None:
             "size": artifacts[version]["size"],
             "sha256": artifacts[version]["sha256"],
             "artifacts": artifacts,
+            "signatures": {
+                version: artifacts[version]["signature"]
+                for version in artifacts
+                if "signature" in artifacts[version]
+            },
         }
         plugins.append(info)
 
