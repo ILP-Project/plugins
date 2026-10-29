@@ -252,6 +252,14 @@ def main() -> None:
         # `latest` 必须是版本意义上的最大值，而不是"这次构建的版本"：
         # 用一个旧版本号重新构建时，站点不能把 latest 降回去。
         newest = max(versions, key=version_key)
+        artifacts = {}
+        for published_version in versions:
+            published = SITE / meta["name"] / published_version / f"{meta['name']}.wasm"
+            artifacts[published_version] = {
+                "url": f"{meta['name']}/{published_version}/{meta['name']}.wasm",
+                "size": published.stat().st_size,
+                "sha256": sha256(published),
+            }
         info = {
             "name": meta["name"],
             "site_id": meta["site_id"],
@@ -261,9 +269,10 @@ def main() -> None:
             "abi": meta["abi"],
             "latest": newest,
             "versions": versions,
-            "url": f"{meta['name']}/{version}/{meta['name']}.wasm",
-            "size": wasm.stat().st_size,
-            "sha256": digest,
+            "url": artifacts[version]["url"],
+            "size": artifacts[version]["size"],
+            "sha256": artifacts[version]["sha256"],
+            "artifacts": artifacts,
         }
         plugins.append(info)
 
