@@ -41,7 +41,7 @@ cargo build --target wasm32-wasip2 --release
 `ilp-plugin-wit`（ABI 契约）通过 git 依赖指向宿主仓库的 tag：
 
 ```toml
-ilp-plugin-wit = { git = "https://github.com/ILP-Project/ILP", tag = "abi-v0.1.0" }
+ilp-plugin-wit = { git = "https://github.com/ILP-Project/ILP", tag = "abi-v0.2.0" }
 ```
 
 本地改 WIT 相关代码时，用 `.cargo/config.toml` 把它补丁到相邻的宿主 checkout，
@@ -52,7 +52,7 @@ ilp-plugin-wit = { git = "https://github.com/ILP-Project/ILP", tag = "abi-v0.1.0
 ilp-plugin-wit = { path = "../ILP/crates/ilp-plugin-wit" }
 ```
 
-注意 `[patch]` 不能凭空造出远端：Cargo 仍会先解析 `tag = "abi-v0.1.0"`，
+注意 `[patch]` 不能凭空造出远端：Cargo 仍会先解析 `tag = "abi-v0.2.0"`，
 所以宿主仓库必须真的打过这个 tag。
 
 ## 发布

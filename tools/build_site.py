@@ -33,7 +33,7 @@ SCHEMA = 1
 
 # 宿主支持的 ABI。必须与 ILP 仓库 crates/ilp-plugin-wit/wit/plugin.wit 里
 # `package ilp:plugin@x.y.z` 一致；宿主侧的 ABI 校验常量也取同一个值。
-SUPPORTED_ABI = "0.1.0"
+SUPPORTED_ABI = "0.2.0"
 
 
 def fail(msg: str) -> None:
