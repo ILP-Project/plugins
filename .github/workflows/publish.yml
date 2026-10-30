@@ -61,6 +61,8 @@ jobs:
         env:
           ILP_SIGNING_KEY_ID: ${{ secrets.ILP_SIGNING_KEY_ID }}
           ILP_SIGNING_KEY: ${{ secrets.ILP_SIGNING_KEY }}
+          # 可选：多签。格式 "key_id:base64,key_id:base64"。
+          ILP_SIGNING_KEYS: ${{ secrets.ILP_SIGNING_KEYS }}
         run: python3 tools/build_site.py
 
       - name: 校验产物
@@ -90,7 +92,14 @@ jobs:
               assert p.get("signatures"), f"{p['name']}: registry 缺少签名索引"
               for v in p["versions"]:
                   artifact = p.get("artifacts", {}).get(v)
-                  assert artifact and artifact.get("signature"), f"{p['name']} {v}: 缺少签名"
+                  assert artifact and artifact.get("signatures"), f"{p['name']} {v}: 缺少签名"
+                  # 同一 version 下每个 key_id 只能出现一次，否则阈值可能被重复签名绕过。
+                  key_ids = [s["key_id"] for s in (
+                      artifact["signatures"]
+                      if isinstance(artifact["signatures"], list)
+                      else [artifact["signatures"]]
+                  )]
+                  assert len(key_ids) == len(set(key_ids)), f"{p['name']} {v}: 签名密钥重复 {key_ids}"
 
               # 每个声明过的版本都必须真的存在，否则 `install name@ver` 会 404。
               for v in p["versions"]:

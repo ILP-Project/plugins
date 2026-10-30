@@ -111,21 +111,66 @@ def crate_stem(d: Path) -> str:
     return load_toml(d / "Cargo.toml")["package"]["name"].replace("-", "_")
 
 
-def sign(path: Path) -> tuple[str, str] | None:
-    """使用 ILP_SIGNING_KEY（base64 Ed25519 私钥）签名，返回 key_id 和签名。"""
+def signing_keys() -> list[tuple[str, str]]:
+    """读取签名密钥，支持多把。
+
+    格式：ILP_SIGNING_KEYS="key_id:base64,key_id:base64"。
+    兼容旧的单密钥变量 ILP_SIGNING_KEY + ILP_SIGNING_KEY_ID。
+    多签的价值在于：一把密钥泄露或运维离职时，不必把已有产物全部重发。
+    """
+    bundle = os.environ.get("ILP_SIGNING_KEYS")
+    if bundle:
+        keys = []
+        for item in bundle.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            key_id, sep, key = item.partition(":")
+            if not sep or not key_id or not key:
+                fail("ILP_SIGNING_KEYS 每项必须是 key_id:base64")
+            keys.append((key_id.strip(), key.strip()))
+        if not keys:
+            fail("ILP_SIGNING_KEYS 为空")
+        return keys
     key = os.environ.get("ILP_SIGNING_KEY")
     key_id = os.environ.get("ILP_SIGNING_KEY_ID")
     if not key or not key_id:
-        return None
+        return []
+    return [(key_id, key)]
+
+
+def sign(path: Path) -> list[dict]:
+    """使用 Ed25519 私钥签名，返回签名列表（按 key_id 排序，保证可复现）。"""
+    keys = signing_keys()
+    if not keys:
+        return []
     try:
+        from cryptography.hazmat.primitives import serialization  # noqa: F401
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-        from cryptography.hazmat.primitives import serialization
-        raw = base64.b64decode(key)
-        private = Ed25519PrivateKey.from_private_bytes(raw)
-        signature = private.sign(path.read_bytes())
-        return key_id, base64.b64encode(signature).decode("ascii")
-    except Exception as exc:
-        fail(f"插件签名失败: {exc}")
+    except ModuleNotFoundError as exc:
+        fail(f"签名需要 cryptography 包: {exc}")
+
+    signatures = []
+    seen: set[str] = set()
+    for key_id, key in sorted(keys):
+        if key_id in seen:
+            fail(f"签名密钥 ID 重复: {key_id}")
+        seen.add(key_id)
+        try:
+            raw = base64.b64decode(key, validate=True)
+            if len(raw) != 32:
+                fail(f"签名私钥 {key_id} 必须是 32 字节")
+            private = Ed25519PrivateKey.from_private_bytes(raw)
+            signature = private.sign(path.read_bytes())
+        except Exception as exc:
+            fail(f"插件签名失败（{key_id}）: {exc}")
+        signatures.append(
+            {
+                "key_id": key_id,
+                "signature": base64.b64encode(signature).decode("ascii"),
+            }
+        )
+    return signatures
 
 
 def sha256(path: Path) -> str:
@@ -175,6 +220,15 @@ def publish(name: str, version: str, wasm: Path) -> str:
             )
     shutil.copyfile(wasm, dest)
     return digest
+
+
+def encode_signatures(signatures: list[dict]) -> dict | list[dict]:
+    """单签发对象、多签发数组。
+
+    宿主两种都接受；保持单签对象形态是为了让旧的镜像与缓存
+    在只读消费方眼里仍像是同一份 schema。
+    """
+    return signatures[0] if len(signatures) == 1 else signatures
 
 
 def page(meta: dict, info: dict, versions: list[str]) -> str:
@@ -302,7 +356,7 @@ def main() -> None:
             }
             signed = sign(published)
             if signed:
-                artifact["signature"] = {"key_id": signed[0], "signature": signed[1]}
+                artifact["signatures"] = signed
             artifacts[published_version] = artifact
         info = {
             "name": meta["name"],
@@ -324,9 +378,9 @@ def main() -> None:
             "sha256": artifacts[version]["sha256"],
             "artifacts": artifacts,
             "signatures": {
-                version: artifacts[version]["signature"]
+                version: encode_signatures(artifacts[version]["signatures"])
                 for version in artifacts
-                if "signature" in artifacts[version]
+                if artifacts[version].get("signatures")
             },
         }
         plugins.append(info)
