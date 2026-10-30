@@ -69,6 +69,7 @@ jobs:
               for key in (
                   "name", "site_id", "abi", "latest", "versions", "url", "sha256",
                   "permissions", "allowed_domains", "license", "maintenance",
+                  "min_host_version", "max_host_version",
               ):
                   assert p.get(key), f"{p.get('name')} 缺少 {key}"
               assert p["latest"] in p["versions"], f"{p['name']} 的 latest 不在 versions 里"

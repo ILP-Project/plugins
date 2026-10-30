@@ -143,6 +143,21 @@ def read_meta(d: Path) -> tuple[dict, dict]:
             f"{d.name}/plugin.toml site_domain={site_domain} 未被 allowed_domains {domains} 覆盖"
         )
 
+    # 宿主兼容范围。ABI 只锁接口形状，管不了燃料预算、限流、落盘语义这些
+    # 行为差异；没有这两个字段，一次宿主升级可以让插件静默失效。
+    min_host = meta.get("min_host_version")
+    max_host = meta.get("max_host_version")
+    if not min_host or not max_host:
+        fail(f"{d.name}/plugin.toml 必须声明 min_host_version 与 max_host_version")
+    for label, value in (("min_host_version", min_host), ("max_host_version", max_host)):
+        if not version_key_valid(value):
+            fail(f"{d.name}/plugin.toml {label}={value!r} 不是合法的 x.y.z 版本")
+    if version_key(min_host) > version_key(max_host):
+        fail(
+            f"{d.name}/plugin.toml min_host_version={min_host} > "
+            f"max_host_version={max_host}"
+        )
+
     meta["permissions"] = sorted(permissions)
     meta["allowed_domains"] = sorted(domains)
     return meta, cargo
@@ -247,6 +262,15 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def version_key_valid(v: str) -> bool:
+    """只接受 x.y.z（可带 -prerelease）。范围比较靠补零对齐，多段会算错。"""
+    if not isinstance(v, str):
+        return False
+    core = v.split("-")[0]
+    parts = core.split(".")
+    return len(parts) == 3 and all(p.isdigit() for p in parts)
+
+
 def version_key(v: str) -> tuple:
     """把 `1.10.0` 这类版本变成可比较的元组。
 
@@ -337,6 +361,7 @@ def page(meta: dict, info: dict, versions: list[str]) -> str:
   <dt>维护状态</dt><dd><code>{e(meta.get('maintenance', '—'))}</code></dd>
   <dt>申请的权限</dt><dd>{e(', '.join(meta.get('permissions', [])) or '—')}</dd>
   <dt>访问域名</dt><dd>{e(', '.join(meta.get('allowed_domains', [])) or '不限')}</dd>
+  <dt>宿主版本</dt><dd>{e(meta['min_host_version'])} – {e(meta['max_host_version'])}</dd>
   <dt>已知限制</dt><dd>{e('; '.join(meta.get('known_limitations', [])))}</dd>
   <dt>产物大小</dt><dd>{info['size']:,} 字节</dd>
   <dt>SHA-256</dt><dd><code>{e(info['sha256'])}</code></dd>
@@ -440,6 +465,8 @@ def main() -> None:
             "known_limitations": meta["known_limitations"],
             "permissions": meta["permissions"],
             "allowed_domains": meta["allowed_domains"],
+            "min_host_version": meta["min_host_version"],
+            "max_host_version": meta["max_host_version"],
             "abi": meta["abi"],
             "latest": newest,
             "versions": versions,

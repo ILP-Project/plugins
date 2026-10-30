@@ -24,6 +24,14 @@ known_limitations = ["依赖番茄公开接口与设备状态", "服务端风控
 permissions = ["http", "clock", "storage-read", "storage-write"]
 allowed_domains = ["fanqienovel.com", "snssdk.com"]
 
+# 宿主兼容范围（闭区间）。ABI 版本只保证接口形状兼容，管不了行为差异：
+# 宿主的燃料预算、限流策略、章节落盘语义都会变。没有这两个字段时，
+# 一次宿主升级可以让插件静默变慢或变错，用户只会看到"下载失败"。
+#
+# 下限写“插件用到的第一个宿主版本”，上限在确认新版行为没变之前不要抬高。
+min_host_version = "0.1.0"
+max_host_version = "0.1.99"
+
 # 与 ILP/crates/ilp-plugin-wit/wit/plugin.wit 里的 `package ilp:plugin@x.y.z` 一致。
 # build_site.py 会校验它，防止 WIT 升版后这里忘记同步。
 abi = "0.2.0"

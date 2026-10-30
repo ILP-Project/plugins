@@ -650,6 +650,20 @@ mod tests {
             "plugin.toml 的 allowed_domains 与 metadata() 不一致"
         );
 
+        // 宿主兼容范围只在 plugin.toml 里（WIT 的 metadata 没有这两个字段，
+        // 加进去就得升 ABI）。所以这里只校验形状，不做交叉比对。
+        for key in ["min_host_version", "max_host_version"] {
+            let v = manifest[key]
+                .as_str()
+                .unwrap_or_else(|| panic!("缺少 {key}"));
+            let parts: Vec<&str> = v.split('-').next().unwrap().split('.').collect();
+            assert_eq!(parts.len(), 3, "{key}={v} 必须是 x.y.z");
+            assert!(
+                parts.iter().all(|p| p.parse::<u32>().is_ok()),
+                "{key}={v} 必须全为数字"
+            );
+        }
+
         // 版本只从 Cargo.toml 来，但 manifest 读它的人会以为这里也有权威值。
         // metadata() 已经用 env!("CARGO_PKG_VERSION")，这里只是把契约写死。
         assert_eq!(meta.version, env!("CARGO_PKG_VERSION"));
