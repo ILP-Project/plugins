@@ -400,10 +400,26 @@ def main() -> None:
     if static.is_dir():
         shutil.copytree(static, SITE, dirs_exist_ok=True)
 
-    (SITE / "registry.json").write_text(
+    registry = SITE / "registry.json"
+    registry.write_text(
         json.dumps({"schema": SCHEMA, "plugins": plugins}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    # registry 自身也要签：产物签名只证明“这段代码可信”，不证明
+    # “install <name> 该指向它”。签名独立成文件，避免自指与
+    # 序列化规范化带来的两侧不一致。
+    registry_sig = sign(registry)
+    sig_path = SITE / "registry.json.sig"
+    if registry_sig:
+        sig_path.write_text(
+            json.dumps(encode_signatures(registry_sig), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    else:
+        # 没有密钥时必须清掉旧签名：留着会发布一份和当前 registry 不匹配的
+        # 签名，校验失败比“没有签名”更难诊断。
+        sig_path.unlink(missing_ok=True)
+        print("提示: 未配置签名密钥，registry.json.sig 未生成")
     (SITE / "index.html").write_text(index_page(plugins), encoding="utf-8")
     print(f"完成: {len(plugins)} 个插件 → {SITE}")
 

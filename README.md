@@ -13,8 +13,16 @@ ilp plugin install fanqie@1.0.0      # 指定版本
 ```
 
 宿主从 `https://ilp.elysola.org/registry.json` 解析下载地址，并在安装前校验
-ABI 与 SHA-256。站点由 `publish.yml` 推到 `site` 分支，Cloudflare Pages
-从该分支发布。
+ABI、SHA-256 与 Ed25519 签名。签名分两层：
+
+- `registry.json` 里每个版本的 `signatures`：证明产物出自可信发布者；
+- 旁路文件 `registry.json.sig`：证明元数据本身没有被改写（否则 `latest`
+  可以被指向某个有效签名但有漏洞的旧版本）。
+
+`registry.json.sig` 签的是该文件的原始字节，因此**任何会改变字节的改动
+（包括格式化）都必须重新签署**——它由 `build_site.py` 在写完 registry 后
+自动生成，不要手工编辑。站点由 `publish.yml` 推到 `site` 分支，
+Cloudflare Pages 从该分支发布。
 
 ## 目录
 
@@ -65,8 +73,8 @@ push 到 `main` 后，`publish.yml` 会：
 1. 把 `site` 分支上**上次发布的产物回填进 `_site`**；
 2. 构建全部插件的 wasm；
 3. 校验 `plugin.toml` 的 `abi` 等于 `SUPPORTED_ABI`；
-4. 生成 `_site/registry.json`、每个版本的 `latest.json` 和站点页面；
-5. 校验每个已声明版本的产品都在、摘要都对；
+4. 生成 `_site/registry.json`、`registry.json.sig`、每个版本的 `latest.json` 和站点页面；
+5. 校验每个已声明版本的产品都在、摘要都对，registry 自身的签名也在；
 6. 把 `_site` 推到 `site` 分支，Cloudflare Pages 从该分支发布。
 
 第 1 步不能省。版本不可变守卫靠比较 `_site` 里已有产物的 sha256，

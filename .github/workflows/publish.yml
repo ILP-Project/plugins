@@ -107,6 +107,19 @@ jobs:
                   assert f.is_file(), f"缺少历史版本产物 {f}"
 
               print(f"  {p['name']} {p['latest']} 已验证（{len(p['versions'])} 个版本）")
+
+          # registry 自身的签名必须覆盖当前文件的原始字节。
+          # 若只验插件产物签名，元数据仍可被改成指向旧版本或别的插件。
+          sig_path = site / "registry.json.sig"
+          assert sig_path.is_file(), "缺少 registry.json.sig（是否未配置签名密钥？）"
+          sigs = json.loads(sig_path.read_text())
+          sigs = sigs if isinstance(sigs, list) else [sigs]
+          assert sigs, "registry 签名为空"
+          key_ids = [s["key_id"] for s in sigs]
+          assert len(key_ids) == len(set(key_ids)), f"registry 签名密钥重复 {key_ids}"
+          for item in sigs:
+              assert item.get("key_id") and item.get("signature"), "registry 签名字段不全"
+          print(f"  registry.json 已签名（{len(sigs)} 个密钥）")
           PY
 
       - name: 推送到 site 分支
