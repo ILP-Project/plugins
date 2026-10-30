@@ -56,9 +56,26 @@ def plugin_dirs() -> list[Path]:
 def read_meta(d: Path) -> tuple[dict, dict]:
     meta = load_toml(d / "plugin.toml")
     cargo = load_toml(d / "Cargo.toml")["package"]
-    for key in ("name", "site_id", "site_name", "site_domain", "description", "abi"):
+    for key in (
+        "name",
+        "site_id",
+        "site_name",
+        "site_domain",
+        "description",
+        "author",
+        "license",
+        "data_source",
+        "authorization_boundary",
+        "maintenance",
+        "known_limitations",
+        "abi",
+    ):
         if not meta.get(key):
             fail(f"{d.name}/plugin.toml 缺少 {key}")
+    if meta["maintenance"] not in {"active", "limited", "unmaintained", "archived"}:
+        fail(f"{d.name}/plugin.toml maintenance 状态无效: {meta['maintenance']}")
+    if not isinstance(meta["known_limitations"], list) or not all(meta["known_limitations"]):
+        fail(f"{d.name}/plugin.toml known_limitations 必须是非空字符串列表")
     # name 决定产物文件名和站点路径，必须与目录名一致，否则构建结果与直觉不符。
     if meta["name"] != d.name:
         fail(f"{d.name}/plugin.toml 的 name={meta['name']} 与目录名不一致")
@@ -195,6 +212,10 @@ def page(meta: dict, info: dict, versions: list[str]) -> str:
   <dt>ABI</dt><dd><code>{e(meta['abi'])}</code></dd>
   <dt>作者</dt><dd>{e(meta.get('author', '—'))}</dd>
   <dt>许可</dt><dd>{e(meta.get('license', '—'))}</dd>
+  <dt>数据来源</dt><dd>{e(meta.get('data_source', '—'))}</dd>
+  <dt>授权边界</dt><dd>{e(meta.get('authorization_boundary', '—'))}</dd>
+  <dt>维护状态</dt><dd><code>{e(meta.get('maintenance', '—'))}</code></dd>
+  <dt>已知限制</dt><dd>{e('; '.join(meta.get('known_limitations', [])))}</dd>
   <dt>产物大小</dt><dd>{info['size']:,} 字节</dd>
   <dt>SHA-256</dt><dd><code>{e(info['sha256'])}</code></dd>
 </dl>
@@ -289,6 +310,12 @@ def main() -> None:
             "site_name": meta["site_name"],
             "site_domain": meta["site_domain"],
             "description": meta["description"],
+            "author": meta["author"],
+            "license": meta["license"],
+            "data_source": meta["data_source"],
+            "authorization_boundary": meta["authorization_boundary"],
+            "maintenance": meta["maintenance"],
+            "known_limitations": meta["known_limitations"],
             "abi": meta["abi"],
             "latest": newest,
             "versions": versions,
