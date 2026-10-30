@@ -32,6 +32,11 @@ jobs:
       - name: 测试
         run: cargo test
 
+      # fixture 里的 Cookie/Token 一旦进 git 就已经泄漏了，扫得再快也只是事后
+      # 通知。所以放在构建之前，让作者第一时间修。
+      - name: 扫描 fixture 明文凭据
+        run: python3 tools/scan_fixtures.py .
+
       - name: 构建 wasm
         run: cargo build --target wasm32-wasip2 --release
 
