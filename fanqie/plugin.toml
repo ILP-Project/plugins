@@ -15,6 +15,15 @@ authorization_boundary = "仅下载公开免费章节；不实现账号密码登
 maintenance = "active"
 known_limitations = ["依赖番茄公开接口与设备状态", "服务端风控可能导致请求失败"]
 
+# 插件真实申请的宿主能力与访问域名。
+#
+# 这两项**必须与 src/lib.rs 里 metadata() 的返回值逐项一致**，否则
+# build_site.py 直接失败。写在这里不是给宿主当安全边界用的——宿主的策略
+# 永远取 WASM 自己的声明——而是为了让 registry 上展示的权限有据可查，
+# 并且让"多申请一个 secret-read"这种改动在 review 时无法悄悄溜过去。
+permissions = ["http", "clock", "storage-read", "storage-write"]
+allowed_domains = ["fanqienovel.com", "snssdk.com"]
+
 # 与 ILP/crates/ilp-plugin-wit/wit/plugin.wit 里的 `package ilp:plugin@x.y.z` 一致。
 # build_site.py 会校验它，防止 WIT 升版后这里忘记同步。
 abi = "0.2.0"

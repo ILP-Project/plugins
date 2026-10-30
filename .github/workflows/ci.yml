@@ -66,10 +66,15 @@ jobs:
           assert reg["schema"] == 1, reg["schema"]
           assert reg["plugins"], "registry 不能为空"
           for p in reg["plugins"]:
-              for key in ("name", "site_id", "abi", "latest", "versions", "url", "sha256"):
+              for key in (
+                  "name", "site_id", "abi", "latest", "versions", "url", "sha256",
+                  "permissions", "allowed_domains", "license", "maintenance",
+              ):
                   assert p.get(key), f"{p.get('name')} 缺少 {key}"
               assert p["latest"] in p["versions"], f"{p['name']} 的 latest 不在 versions 里"
               path = f"_site/{p['url']}"
               assert __import__("pathlib").Path(path).is_file(), f"缺少产物 {path}"
+              for version, artifact in p.get("artifacts", {}).items():
+                  assert artifact.get("sha256"), f"{p['name']} {version} 缺少摘要"
           print("registry 形状正确")
           PY

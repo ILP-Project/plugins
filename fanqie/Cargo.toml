@@ -2,6 +2,7 @@
 name = "ilp-plugin-fanqie"
 version = "1.0.1"
 edition = "2021"
+license = "GPL-3.0"
 
 [lib]
 crate-type = ["cdylib"]
@@ -17,3 +18,7 @@ md5 = { package = "md-5", version = "0.10" }
 flate2 = "1"
 base64 = "0.22"
 sha2 = "0.10"
+
+[dev-dependencies]
+# 只在测试里用：把 plugin.toml 当成契约来读，与 metadata() 逐项比对。
+toml = "0.9"

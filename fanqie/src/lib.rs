@@ -572,4 +572,86 @@ mod tests {
     fn strip_html_unescapes_entities() {
         assert_eq!(strip_html("<blk>a&amp;b&nbsp;c</blk>"), "a&b c");
     }
+
+    /// plugin.toml 里声明的东西必须与 `metadata()` 返回值一致。
+    ///
+    /// 这两处必然会出现一处改动而另一处忘改的情况。放任不管的后果是
+    /// registry 上展示的权限清单与插件真实申请的能力不符——而宿主的
+    /// 安全策略取的是 WASM 这一份，用户看到的就成了假信息。
+    #[test]
+    fn manifest_matches_metadata() {
+        let manifest: toml::Value =
+            toml::from_str(include_str!("../plugin.toml")).expect("plugin.toml 无法解析");
+        let meta = Fanqie::metadata();
+
+        assert_eq!(
+            manifest["name"].as_str(),
+            Some("fanqie"),
+            "plugin.toml 的 name 必须是目录名"
+        );
+        assert_eq!(manifest["site_id"].as_str(), Some(meta.site_id.as_str()));
+        assert_eq!(
+            manifest["site_name"].as_str(),
+            Some(meta.site_name.as_str())
+        );
+        assert_eq!(
+            manifest["site_domain"].as_str(),
+            Some(meta.site_domain.as_str())
+        );
+        assert_eq!(manifest["abi"].as_str(), Some(meta.abi_version.as_str()));
+
+        let declared: Vec<String> = manifest["permissions"]
+            .as_array()
+            .expect("plugin.toml 缺少 permissions")
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .expect("permissions 元素必须是字符串")
+                    .to_string()
+            })
+            .collect();
+        let mut declared = declared;
+        declared.sort();
+        let mut actual: Vec<String> = meta
+            .permissions
+            .iter()
+            .map(|p| match p {
+                ilp_plugin_wit::ilp::plugin::types::Permission::Http => "http",
+                ilp_plugin_wit::ilp::plugin::types::Permission::Clock => "clock",
+                ilp_plugin_wit::ilp::plugin::types::Permission::StorageRead => "storage-read",
+                ilp_plugin_wit::ilp::plugin::types::Permission::StorageWrite => "storage-write",
+                ilp_plugin_wit::ilp::plugin::types::Permission::SecretRead => "secret-read",
+                ilp_plugin_wit::ilp::plugin::types::Permission::SecretWrite => "secret-write",
+            })
+            .map(str::to_string)
+            .collect();
+        actual.sort();
+        assert_eq!(
+            declared, actual,
+            "plugin.toml 的 permissions 与 metadata() 不一致"
+        );
+
+        let declared: Vec<String> = manifest["allowed_domains"]
+            .as_array()
+            .expect("plugin.toml 缺少 allowed_domains")
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .expect("allowed_domains 元素必须是字符串")
+                    .to_string()
+            })
+            .collect();
+        let mut declared = declared;
+        declared.sort();
+        let mut actual = meta.allowed_domains.clone();
+        actual.sort();
+        assert_eq!(
+            declared, actual,
+            "plugin.toml 的 allowed_domains 与 metadata() 不一致"
+        );
+
+        // 版本只从 Cargo.toml 来，但 manifest 读它的人会以为这里也有权威值。
+        // metadata() 已经用 env!("CARGO_PKG_VERSION")，这里只是把契约写死。
+        assert_eq!(meta.version, env!("CARGO_PKG_VERSION"));
+    }
 }

@@ -53,6 +53,22 @@ def plugin_dirs() -> list[Path]:
     return sorted(p.parent for p in ROOT.glob("*/plugin.toml"))
 
 
+# 与 WIT 里 `enum permission` 的成员一一对应。写死在这里是有意的：
+# WIT 增删权限时这里必须一起改，否则新权限会绕过审核直接发布。
+KNOWN_PERMISSIONS = {
+    "http",
+    "clock",
+    "storage-read",
+    "storage-write",
+    "secret-read",
+    "secret-write",
+}
+
+# 允许的许可证。不是法律审查，只是拒绝"未声明"和明显的非自由许可——
+# 别人的插件里塞一段 GPL 代码进 MIT 仓库，出了问题没人能追。
+ALLOWED_LICENSES = {"MIT", "Apache-2.0", "GPL-3.0", "LGPL-3.0", "MPL-2.0", "BSD-3-Clause"}
+
+
 def read_meta(d: Path) -> tuple[dict, dict]:
     meta = load_toml(d / "plugin.toml")
     cargo = load_toml(d / "Cargo.toml")["package"]
@@ -79,6 +95,56 @@ def read_meta(d: Path) -> tuple[dict, dict]:
     # name 决定产物文件名和站点路径，必须与目录名一致，否则构建结果与直觉不符。
     if meta["name"] != d.name:
         fail(f"{d.name}/plugin.toml 的 name={meta['name']} 与目录名不一致")
+
+    if meta["license"] not in ALLOWED_LICENSES:
+        fail(
+            f"{d.name}/plugin.toml license={meta['license']} 不在允许列表内。\n"
+            f"允许: {', '.join(sorted(ALLOWED_LICENSES))}"
+        )
+
+    # Cargo.toml 的 license 与 plugin.toml 不一致时，产物里那份才是法务上有效的那份。
+    cargo_license = cargo.get("license")
+    if cargo_license != meta["license"]:
+        fail(
+            f"{d.name}: Cargo.toml license={cargo_license!r} 与 plugin.toml "
+            f"license={meta['license']!r} 不一致"
+        )
+
+    permissions = meta.get("permissions")
+    if not isinstance(permissions, list) or not permissions:
+        fail(f"{d.name}/plugin.toml 必须声明 permissions（非空列表）")
+    if len(set(permissions)) != len(permissions):
+        fail(f"{d.name}/plugin.toml permissions 有重复项")
+    unknown = sorted(set(permissions) - KNOWN_PERMISSIONS)
+    if unknown:
+        fail(
+            f"{d.name}/plugin.toml 声明了未知权限 {unknown}。\n"
+            f"若 WIT 新增了权限，请同步 build_site.py 的 KNOWN_PERMISSIONS。"
+        )
+    if "http" in permissions:
+        domains = meta.get("allowed_domains")
+        if not isinstance(domains, list) or not domains:
+            fail(f"{d.name}/plugin.toml 申请了 http，必须声明 allowed_domains")
+    else:
+        domains = meta.get("allowed_domains", [])
+        if domains:
+            fail(f"{d.name}/plugin.toml 声明了 allowed_domains 但未申请 http 权限")
+    for domain in domains:
+        if not isinstance(domain, str) or not domain or "/" in domain or ":" in domain:
+            fail(f"{d.name}/plugin.toml allowed_domains 里 {domain!r} 不是纯域名")
+        # 通配会让"声明了哪些域名"变成一句空话。
+        if "*" in domain:
+            fail(f"{d.name}/plugin.toml allowed_domains 不允许通配: {domain}")
+    # 站点主域名必须在允许列表里，否则插件连自己的站点都访问不了，
+    # 这是明显的配置错误，不该等到运行时才由 host 报 permission-denied。
+    site_domain = meta["site_domain"]
+    if domains and not any(site_domain == d or site_domain.endswith("." + d) for d in domains):
+        fail(
+            f"{d.name}/plugin.toml site_domain={site_domain} 未被 allowed_domains {domains} 覆盖"
+        )
+
+    meta["permissions"] = sorted(permissions)
+    meta["allowed_domains"] = sorted(domains)
     return meta, cargo
 
 
@@ -269,6 +335,8 @@ def page(meta: dict, info: dict, versions: list[str]) -> str:
   <dt>数据来源</dt><dd>{e(meta.get('data_source', '—'))}</dd>
   <dt>授权边界</dt><dd>{e(meta.get('authorization_boundary', '—'))}</dd>
   <dt>维护状态</dt><dd><code>{e(meta.get('maintenance', '—'))}</code></dd>
+  <dt>申请的权限</dt><dd>{e(', '.join(meta.get('permissions', [])) or '—')}</dd>
+  <dt>访问域名</dt><dd>{e(', '.join(meta.get('allowed_domains', [])) or '不限')}</dd>
   <dt>已知限制</dt><dd>{e('; '.join(meta.get('known_limitations', [])))}</dd>
   <dt>产物大小</dt><dd>{info['size']:,} 字节</dd>
   <dt>SHA-256</dt><dd><code>{e(info['sha256'])}</code></dd>
@@ -370,6 +438,8 @@ def main() -> None:
             "authorization_boundary": meta["authorization_boundary"],
             "maintenance": meta["maintenance"],
             "known_limitations": meta["known_limitations"],
+            "permissions": meta["permissions"],
+            "allowed_domains": meta["allowed_domains"],
             "abi": meta["abi"],
             "latest": newest,
             "versions": versions,
