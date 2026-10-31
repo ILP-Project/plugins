@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "plugins": [
+    {
+      "name": "fanqie",
+      "site_id": "fanqie",
+      "site_name": "番茄小说",
+      "site_domain": "fanqienovel.com",
+      "description": "番茄小说（fanqienovel.com）免费章节下载。支持目录、正文、搜索与封面。",
+      "author": "RhenCloud",
+      "license": "GPL-3.0",
+      "data_source": "fanqienovel.com 公开可访问内容",
+      "authorization_boundary": "仅下载公开免费章节；不实现账号密码登录，不绕过付费或访问控制",
+      "maintenance": "active",
+      "known_limitations": [
+        "依赖番茄公开接口与设备状态",
+        "服务端风控可能导致请求失败"
+      ],
+      "permissions": [
+        "clock",
+        "http",
+        "storage-read",
+        "storage-write"
+      ],
+      "allowed_domains": [
+        "fanqienovel.com",
+        "snssdk.com"
+      ],
+      "min_host_version": "0.1.0",
+      "max_host_version": "0.1.99",
+      "abi": "0.2.0",
+      "latest": "1.0.1",
+      "versions": [
+        "1.0.1",
+        "1.0.0"
+      ],
+      "url": "fanqie/1.0.1/fanqie.wasm",
+      "size": 371899,
+      "sha256": "d2432fd294961484b4568aca2620c2851b1b5571a2580ff868d93285c21a182a",
+      "artifacts": {
+        "1.0.1": {
+          "url": "fanqie/1.0.1/fanqie.wasm",
+          "size": 371899,
+          "sha256": "d2432fd294961484b4568aca2620c2851b1b5571a2580ff868d93285c21a182a",
+          "signatures": [
+            {
+              "key_id": "release-2026",
+              "signature": "TvreiCHnD+cwLXPnIMXFX1lgvtxQ15e+Ssogs7uxWzW0Z9GvlwsQKyaPxmhlwzi4Q5n3TDn3psvMQvh4UYE4Dg=="
+            }
+          ]
+        },
+        "1.0.0": {
+          "url": "fanqie/1.0.0/fanqie.wasm",
+          "size": 365566,
+          "sha256": "541dac990bc951b87248bbced8b56984a74ac2369022fd0954927045420b2e2f",
+          "signatures": [
+            {
+              "key_id": "release-2026",
+              "signature": "RFBU5xl5uUStzSl5f57zQwcmcpIIR4R7CBm4NwXIOPcVmeA3sIoVfuexHs0VWJ5bkJorZxXDK64XqFZJB1FPDg=="
+            }
+          ]
+        }
+      },
+      "signatures": {
+        "1.0.1": {
+          "key_id": "release-2026",
+          "signature": "TvreiCHnD+cwLXPnIMXFX1lgvtxQ15e+Ssogs7uxWzW0Z9GvlwsQKyaPxmhlwzi4Q5n3TDn3psvMQvh4UYE4Dg=="
+        },
+        "1.0.0": {
+          "key_id": "release-2026",
+          "signature": "RFBU5xl5uUStzSl5f57zQwcmcpIIR4R7CBm4NwXIOPcVmeA3sIoVfuexHs0VWJ5bkJorZxXDK64XqFZJB1FPDg=="
+        }
+      }
+    }
+  ]
+}
