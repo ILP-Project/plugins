@@ -1,15 +1,19 @@
 name: ci
 
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
 # 只做校验，不部署。
 #
 # 部署由 Cloudflare Pages 的 Git 集成完成（构建命令 `python3 tools/build_site.py`，
 # 输出目录 `_site`）。这条流水线的价值是：CF Pages 构建失败不会阻止 PR 合并，
 # 而 PR 里混进一个 clippy 警告或未格式化的文件是常事，需要有人先挡住。
-
-on:
-  push:
-    branches: [main]
-  pull_request:
 
 jobs:
   plugin:
@@ -42,11 +46,15 @@ jobs:
 
       - name: 校验产物是组件模型
         run: |
+          set -euo pipefail
           wasm=target/wasm32-wasip2/release/ilp_plugin_fanqie.wasm
           test -f "$wasm"
-          # 组件头 00 61 73 6d 0d 00 01 00。宿主只接受核心模块和组件两种头，
-          # 这里多一道防线，避免 CI 绿而产物其实不对。
-          od -An -tx1 -N8 "$wasm" | tr -s ' ' | grep -qx ' 00 61 73 6d 0d 00 01 00'
+          python3 - "$wasm" <<'PY'
+          import sys
+          data = open(sys.argv[1], "rb").read()
+          if data[:4] != b"\0asm" or data[6:8] != b"\x01\x00":
+              raise SystemExit("Fanqie 产物不是 WebAssembly component")
+          PY
 
   site:
     runs-on: ubuntu-latest
@@ -54,15 +62,37 @@ jobs:
       - uses: actions/checkout@v5
       - name: 安装 wasm 目标
         run: rustup target add wasm32-wasip2
+      - name: 安装签名依赖
+        run: python3 -m pip install --quiet cryptography
       - name: 生成站点与 registry
+        env:
+          ILP_SIGNING_KEYS: fixture:AQECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
         run: python3 tools/build_site.py
 
       # 产物形状是宿主的契约，写死几条断言免得改脚本时悄悄破掉。
-      - name: 校验 registry 形状
+      - name: 校验 registry 形状与签名
         run: |
           python3 - <<'PY'
-          import json, sys
-          reg = json.load(open("_site/registry.json"))
+          import base64
+          import hashlib
+          import json
+          from pathlib import Path
+          from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+          registry_path = Path("_site/registry.json")
+          registry_bytes = registry_path.read_bytes()
+          reg = json.loads(registry_bytes)
+          fixture_key = Ed25519PrivateKey.from_private_bytes(bytes(range(1, 33)))
+          fixture_public = fixture_key.public_key()
+
+          def verify(raw, value):
+              values = value if isinstance(value, list) else [value]
+              assert values, "签名为空"
+              for item in values:
+                  assert item["key_id"] == "fixture", item
+                  fixture_public.verify(base64.b64decode(item["signature"]), raw)
+
+          verify(registry_bytes, json.loads(Path("_site/registry.json.sig").read_text()))
           assert reg["schema"] == 1, reg["schema"]
           assert reg["plugins"], "registry 不能为空"
           for p in reg["plugins"]:
@@ -77,5 +107,18 @@ jobs:
               assert __import__("pathlib").Path(path).is_file(), f"缺少产物 {path}"
               for version, artifact in p.get("artifacts", {}).items():
                   assert artifact.get("sha256"), f"{p['name']} {version} 缺少摘要"
-          print("registry 形状正确")
+                  assert artifact.get("signatures"), f"{p['name']} {version} 缺少签名"
+                  artifact_path = Path("_site") / artifact["url"]
+                  raw = artifact_path.read_bytes()
+                  assert hashlib.sha256(raw).hexdigest() == artifact["sha256"]
+                  verify(raw, artifact["signatures"])
+          sig = __import__("pathlib").Path("_site/registry.json.sig")
+          assert sig.is_file(), "缺少 registry.json.sig"
+          values = json.loads(sig.read_text())
+          values = values if isinstance(values, list) else [values]
+          assert values, "registry 签名为空"
+          ids = [item.get("key_id") for item in values]
+          assert all(item.get("signature") for item in values), "registry 签名字段不全"
+          assert len(ids) == len(set(ids)), "registry 签名密钥重复"
+          print("registry 形状与签名正确")
           PY
